@@ -1,0 +1,3 @@
+cd project
+g++ -Ofast -march=native -DNDEBUG -flto -std=c++17 -Wall -Wextra -pedantic main.cpp env.cpp agent.cpp exp_replay.cpp utils.cpp -o city_planner
+./city_planner

@@ -1,0 +1,23 @@
+10000 = num_episodes, actions = 100, 0.2 = alpha, 0.99 = gamma, 1.0, = epsilon, 0.99 = edr, 0.01 = min_epsilon
+Best Solution - Houses: 27
+Grid Layout:
+H H H H H H H H H . H H H . . . . H H H
+H H H H H H H H H . H H H . H H H H H H
+H H H H H H H H H . H H H . H H H H H H
+. . . . . . . H H H H H H . H H H . . .
+H H H H H H . H H H H H H . H H H H H H
+H H H H H H . H H H H H H . H H H H H H
+H H H H H H . T T T T T . . H H H H H H
+H H H . . . . T T T T T . H H H . . . .
+H H H H H H . T T T T T . H H H . . . .
+H H H H H H . T T T T T . H H H H H H .
+. . . H H H . T T T T T . H H H H H H .
+. . . . . . . T T T T T . H H H H H H .
+. H H H H H H T T T T T . H H H . . . .
+. H H H H H H H H H . . . . . . . H H H
+. H H H H H H H H H . . H H H . . H H H
+. . . . . . . H H H . . H H H . . H H H
+. . . . . . . H H H . . H H H H H H . .
+H H H H H H . H H H . H H H . H H H . .
+H H H H H H . H H H . H H H . H H H . .
+H H H H H H P P P P P H H H . . . . . .

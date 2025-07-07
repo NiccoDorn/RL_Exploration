@@ -1,0 +1,64 @@
+#include <iostream>
+#include <algorithm>
+#include <unordered_set>
+#include <vector>
+#include <map>
+#include <random>
+
+#include "env.h"
+#include "common.h"
+#include "utils.h"
+
+int EnhancedCityPlanningEnv::_fill_gaps_greedy() {
+    int houses_added = 0;
+    int max_overall_attempts = 100;
+
+    for (int overall_attempt = 0; overall_attempt < max_overall_attempts; ++overall_attempt) {
+        std::vector<Pos> potential_gaps;
+        std::unordered_set<int> tried_and_failed_hashes_in_this_pass;
+
+        for (int r = 0; r < rows_ - HOUSE_H + 1; ++r) {
+            for (int c = 0; c < cols_ - HOUSE_W + 1; ++c) {
+                if (_is_valid_position(r, c)) {
+                    std::vector<Pos> house_coords = get_building_coords(r, c, HOUSE_H, HOUSE_W);
+                    if (is_within_influence(house_coords, tc_center_)) {
+                        potential_gaps.push_back({r, c});
+                    }
+                }
+            }
+        }
+
+        if (potential_gaps.empty()) { break; }
+
+        std::sort(potential_gaps.begin(), potential_gaps.end(),
+                  [this](const Pos& a, const Pos& b) {
+                    bool a_aligned = _is_block_aligned(a.r, a.c);
+                    bool b_aligned = _is_block_aligned(b.r, b.c);
+                    if (a_aligned != b_aligned) {
+                        return a_aligned > b_aligned; // Prioritize true (block-aligned) over false
+                    }
+                    return _count_potential_block_extensions(a.r, a.c) > _count_potential_block_extensions(b.r, b.c);
+                  });
+
+        bool house_placed_in_this_overall_attempt = false;
+        for (const auto& gap : potential_gaps) {
+            int gap_hash = gap.r * cols_ + gap.c;
+            if (tried_and_failed_hashes_in_this_pass.count(gap_hash)) {
+                continue;
+            }
+            if (_check_all_buildings_connectivity(gap.r, gap.c)) {
+                place_building_on_grid(grid_, HOUSE, gap.r, gap.c, HOUSE_H, HOUSE_W);
+                placed_buildings_info_.push_back({gap.r, gap.c, HOUSE_H, HOUSE_W, HOUSE});
+                house_positions_.push_back(gap);
+                num_houses_placed_++;
+                houses_added++;
+                _update_connectivity_cache();
+                _invalidate_cache();
+                house_placed_in_this_overall_attempt = true;
+                break;
+            } else { tried_and_failed_hashes_in_this_pass.insert(gap_hash); }
+        }
+        if (!house_placed_in_this_overall_attempt) { break; }
+    }
+    return houses_added;
+}
