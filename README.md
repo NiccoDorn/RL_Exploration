@@ -17,3 +17,14 @@
 > Project aims at providing Anno 1800 and Anno 117 basic blueprints for city planning
 > n Blueprint solutions per Island Shape and different-sizes rectangular shapes
 > (Thus the hardcoding of rectangular optimal solutions might be a thing)
+
+#### Training Flow of Fnction Calls
+`main(...)` => `train_enhanced_rl_agent(...)` => `reset()` => `_invalidate_cache()` => `place_building_on_grid(...)`
+=> `get_building_coords(...)` => `std::shuffle(...)` => `check_overlap(...)` => `check_overlap(...)` => `place_building_on_grid(...)`
+=> `get_building_coords(...)`=> `_update_connectivity_cache()` => `bfs_road_reachable(...)` => `bfs_road_reachable(...)`
+=> `_get_reduced_state(...)` => `_is_valid_position(...)` => `check_overlap(...)` => `is_area_road(...)` => `_get_valid_actions_optimized()`
+=> `_is_valid_position(...)` => `check_overlap(...)` => `is_area_road(...)` => `get_building_coords(...)` => `is_within_influence(...)`
+=> `calculate_distance_sq(...)` => `_check_connectivity_fast(...)` => `get_building_coords(...)` => `_is_block_aligned(...)`
+=> `choose_action(...)` => `_choose_action_ucb(...)` || `_get_q_values`
+
+> Flow of function calls needs to be constructed conditionally, else loss of information.

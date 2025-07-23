@@ -103,7 +103,12 @@ std::vector<std::vector<bool>> bfs_road_reachable(
                 }
             }
         }
-    }
+    } 
+    // Why BFS? Why not just keep a list of road-tiles that still exist. Since the roads are layed out throughout the whole
+    // grid at the beginning, we can simply look those up for every newly placed house as well as deleting entries if a house is
+    // successfully placed. To know whether we have disconnected roads from the rest of road system, we can check in a lookup
+    // map for each road tile if at least one of the 4 directions is road and is connected to kontor & tc
+    // like these, we might be able to reduce bfs load
 
     while (!q.empty()) {
         Pos current = q.front();

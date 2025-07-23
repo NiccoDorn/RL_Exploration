@@ -16,7 +16,7 @@ void train_enhanced_rl_agent(EnhancedCityPlanningEnv& env, EnhancedQLearningAgen
         bool done = false;
         double total_reward = 0.0;
         int num_actions_this_episode = 0;
-        int max_actions_per_episode = 150;
+        int max_actions_per_episode = 50;
 
         while (!done && num_actions_this_episode < max_actions_per_episode) {
             std::vector<int> valid_actions = env.get_valid_actions();
@@ -69,11 +69,11 @@ int main() {
 
     EnhancedCityPlanningEnv env(grid_rows, grid_cols);
     EnhancedQLearningAgent agent(
-        0.2,    // alpha
-        0.9,   // gamma
+        0.1,    // alpha
+        0.9,    // gamma
         1.0,    // epsilon
-        0.997,  // edr
-        0.07    // min_epsilon
+        0.995,  // edr
+        0.01    // min_epsilon
     );
 
     std::cout << "Enhanced QRL-Training on a " << grid_rows << "x" << grid_cols << " grid..." << std::endl;
@@ -82,6 +82,6 @@ int main() {
     std::cout << "          Experience Replay, Incremental Connectivity Checks," << std::endl;
     std::cout << "          Block-Aligned Prioritization, Greedy Gap Filling" << std::endl;
 
-    train_enhanced_rl_agent(env, agent, 10000);
+    train_enhanced_rl_agent(env, agent, 20000);
     return 0;
 }
