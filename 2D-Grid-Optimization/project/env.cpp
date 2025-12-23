@@ -9,12 +9,9 @@ EnhancedCityPlanningEnv::EnhancedCityPlanningEnv(int rows, int cols) :
     rows_(rows), cols_(cols), episode_length_(0),
     house_spatial_hash_(HOUSE_H, HOUSE_W),
     valid_actions_dirty_(true),
-    bfs_cache_valid_(false),
-    max_actions_per_episode_(200) {
+    max_actions_per_episode_(50) {
 
     grid_.resize(rows_ * cols_, ROAD);
-    cached_tc_reachable_.resize(rows_, std::vector<bool>(cols_, false));
-    cached_kontor_reachable_.resize(rows_, std::vector<bool>(cols_, false));
     std::random_device rd;
     rng_ = std::mt19937(rd());
     episode_end_processing_ = true;
@@ -84,38 +81,13 @@ int EnhancedCityPlanningEnv::_count_potential_block_extensions(int r, int c) con
     return extensions;
 }
 
-void EnhancedCityPlanningEnv::_update_bfs_caches() const {
-    cached_tc_reachable_ = bfs_road_reachable_flat(grid_, rows_, cols_, tc_coords_list_, nullptr);
-    cached_kontor_reachable_ = bfs_road_reachable_flat(grid_, rows_, cols_, kontor_coords_list_, nullptr);
-    bfs_cache_valid_ = true;
-}
-
 bool EnhancedCityPlanningEnv::_check_all_buildings_connectivity(int new_house_r, int new_house_c) const {
-    // Update BFS cache if invalid
-    if (!bfs_cache_valid_) {
-        _update_bfs_caches();
-    }
+    PlacedBuilding hypothetical_building = {new_house_r, new_house_c, HOUSE_H, HOUSE_W, HOUSE};
+    const PlacedBuilding* hyp_ptr = (new_house_r >= 0 && new_house_c >= 0) ? &hypothetical_building : nullptr;
 
-    auto is_hypothetical_cell = [&](int r, int c) {
-        if (new_house_r >= 0 && new_house_c >= 0) {
-            return r >= new_house_r && r < new_house_r + HOUSE_H &&
-                   c >= new_house_c && c < new_house_c + HOUSE_W;
-        }
-        return false;
-    };
-
-    // Check TC ↔ Kontor connectivity: There must be at least one road reachable from both TC and Kontor
-    bool tc_kontor_connected = false;
-    for (int r = 0; r < rows_ && !tc_kontor_connected; ++r) {
-        for (int c = 0; c < cols_ && !tc_kontor_connected; ++c) {
-            if (at(r, c) == ROAD && !is_hypothetical_cell(r, c)) {
-                if (cached_tc_reachable_[r][c] && cached_kontor_reachable_[r][c]) {
-                    tc_kontor_connected = true;
-                }
-            }
-        }
-    }
-    if (!tc_kontor_connected) {
+    // ALWAYS do full BFS with hypothetical building - cache doesn't account for blocked roads
+    // Check TC ↔ Kontor connectivity with hypothetical building
+    if (!is_connected_by_road_flat(grid_, rows_, cols_, tc_coords_list_, kontor_coords_list_, hyp_ptr)) {
         return false;
     }
 
@@ -123,25 +95,8 @@ bool EnhancedCityPlanningEnv::_check_all_buildings_connectivity(int new_house_r,
     for (const auto& house_pos : house_positions_) {
         std::vector<Pos> house_coords = get_building_coords(house_pos.r, house_pos.c, HOUSE_H, HOUSE_W);
 
-        bool connected_to_tc = false;
-        bool connected_to_kontor = false;
-
-        for (const auto& coord : house_coords) {
-            constexpr Pos dirs[] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
-            for (const auto& dir : dirs) {
-                int nr = coord.r + dir.r;
-                int nc = coord.c + dir.c;
-                if (nr >= 0 && nr < rows_ && nc >= 0 && nc < cols_) {
-                    if (at(nr, nc) == ROAD && !is_hypothetical_cell(nr, nc)) {
-                        if (cached_tc_reachable_[nr][nc]) connected_to_tc = true;
-                        if (cached_kontor_reachable_[nr][nc]) connected_to_kontor = true;
-                        if (connected_to_tc && connected_to_kontor) goto house_done;
-                    }
-                }
-            }
-        }
-        house_done:
-        if (!connected_to_tc || !connected_to_kontor) {
+        if (!is_connected_by_road_flat(grid_, rows_, cols_, house_coords, tc_coords_list_, hyp_ptr) ||
+            !is_connected_by_road_flat(grid_, rows_, cols_, house_coords, kontor_coords_list_, hyp_ptr)) {
             return false;
         }
     }
@@ -150,25 +105,8 @@ bool EnhancedCityPlanningEnv::_check_all_buildings_connectivity(int new_house_r,
     if (new_house_r >= 0 && new_house_c >= 0) {
         std::vector<Pos> new_house_coords = get_building_coords(new_house_r, new_house_c, HOUSE_H, HOUSE_W);
 
-        bool connected_to_tc = false;
-        bool connected_to_kontor = false;
-
-        for (const auto& coord : new_house_coords) {
-            constexpr Pos dirs[] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
-            for (const auto& dir : dirs) {
-                int nr = coord.r + dir.r;
-                int nc = coord.c + dir.c;
-                if (nr >= 0 && nr < rows_ && nc >= 0 && nc < cols_) {
-                    if (at(nr, nc) == ROAD && !is_hypothetical_cell(nr, nc)) {
-                        if (cached_tc_reachable_[nr][nc]) connected_to_tc = true;
-                        if (cached_kontor_reachable_[nr][nc]) connected_to_kontor = true;
-                        if (connected_to_tc && connected_to_kontor) goto new_house_done;
-                    }
-                }
-            }
-        }
-        new_house_done:
-        if (!connected_to_tc || !connected_to_kontor) {
+        if (!is_connected_by_road_flat(grid_, rows_, cols_, new_house_coords, tc_coords_list_, hyp_ptr) ||
+            !is_connected_by_road_flat(grid_, rows_, cols_, new_house_coords, kontor_coords_list_, hyp_ptr)) {
             return false;
         }
     }
@@ -278,7 +216,6 @@ int EnhancedCityPlanningEnv::_fill_gaps_greedy() {
                 num_houses_placed_++;
                 houses_added++;
                 _invalidate_valid_actions(gap.r, gap.c);
-                bfs_cache_valid_ = false;
                 house_placed_in_this_overall_attempt = true;
                 break;
             }
@@ -424,7 +361,6 @@ State EnhancedCityPlanningEnv::reset() {
     last_house_pos_ = {-1, -1};
     valid_actions_dirty_ = true;
     valid_action_set_.clear();
-    bfs_cache_valid_ = false;
 
     int tc_r = (rows_ - TOWN_CENTER_H) / 2;
     int tc_c = (cols_ - TOWN_CENTER_W) / 2;
@@ -511,7 +447,6 @@ std::tuple<State, double, bool> EnhancedCityPlanningEnv::step(int action_idx) {
     last_house_pos_ = {r, c};
 
     _invalidate_valid_actions(r, c);
-    bfs_cache_valid_ = false;
 
     double reward = REWARD_PLACEMENT_SUCCESS;
     reward += _calculate_reward_shaping(r, c);
