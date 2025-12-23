@@ -1,0 +1,28 @@
+# Build directories
+build/
+cmake-build-*/
+
+# Compiled files
+*.o
+*.exe
+*.out
+city_planning_rl
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Output files
+*.txt
+!CMakeLists.txt
+!OPTIMIZATION_REPORT.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

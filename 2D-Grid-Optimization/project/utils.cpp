@@ -18,15 +18,14 @@ const std::vector<Pos> HOUSE_RELATIVE_COORDS = {
     {2,0}, {2,1}, {2,2}
 };
 
-bool is_area_road(const std::vector<std::vector<int>>& grid, int r, int c, int h, int w) {
-    int rows = grid.size();
-    int cols = grid[0].size();
+bool is_area_road_flat(const std::vector<int>& grid, int cols, int r, int c, int h, int w) {
+    int rows = grid.size() / cols;
     if (!(r >= 0 && r < rows - h + 1 && c >= 0 && c < cols - w + 1)) {
         return false;
     }
     for (int i = r; i < r + h; ++i) {
         for (int j = c; j < c + w; ++j) {
-            if (grid[i][j] != ROAD) {
+            if (grid[i * cols + j] != ROAD) {
                 return false;
             }
         }
@@ -34,10 +33,10 @@ bool is_area_road(const std::vector<std::vector<int>>& grid, int r, int c, int h
     return true;
 }
 
-void place_building_on_grid(std::vector<std::vector<int>>& grid, int building_type_val, int r, int c, int h, int w) {
+void place_building_on_grid_flat(std::vector<int>& grid, int cols, int building_type_val, int r, int c, int h, int w) {
     for (int i = r; i < r + h; ++i) {
         for (int j = c; j < c + w; ++j) {
-            grid[i][j] = building_type_val;
+            grid[i * cols + j] = building_type_val;
         }
     }
 }
@@ -59,8 +58,10 @@ std::vector<Pos> get_building_coords(int r, int c, int h, int w) {
     return coords;
 }
 
-double calculate_distance_sq(Pos p1, Pos p2) {
-    return static_cast<double>((p1.r - p2.r) * (p1.r - p2.r) + (p1.c - p2.c) * (p1.c - p2.c));
+inline double calculate_distance_sq(Pos p1, Pos p2) noexcept {
+    int dr = p1.r - p2.r;
+    int dc = p1.c - p2.c;
+    return static_cast<double>(dr * dr + dc * dc);
 }
 
 bool is_within_influence(const std::vector<Pos>& house_coords, const Pos& tc_center) {
@@ -93,7 +94,8 @@ std::vector<std::vector<bool>> bfs_road_reachable(
     };
 
     for (const auto& br_bc : start_building_coords) {
-        for (const auto& dir : {Pos{-1,0}, Pos{1,0}, Pos{0,-1}, Pos{0,1}}) {
+        constexpr Pos dirs[] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
+        for (const auto& dir : dirs) {
             int nr = br_bc.r + dir.r;
             int nc = br_bc.c + dir.c;
             if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc] == ROAD && !is_hypothetical_cell(nr, nc)) {
@@ -103,18 +105,14 @@ std::vector<std::vector<bool>> bfs_road_reachable(
                 }
             }
         }
-    } 
-    // Why BFS? Why not just keep a list of road-tiles that still exist. Since the roads are layed out throughout the whole
-    // grid at the beginning, we can simply look those up for every newly placed house as well as deleting entries if a house is
-    // successfully placed. To know whether we have disconnected roads from the rest of road system, we can check in a lookup
-    // map for each road tile if at least one of the 4 directions is road and is connected to kontor & tc
-    // like these, we might be able to reduce bfs load
+    }
 
     while (!q.empty()) {
         Pos current = q.front();
         q.pop_front();
 
-        for (const auto& dir : {Pos{0,1}, Pos{0,-1}, Pos{1,0}, Pos{-1,0}}) {
+        constexpr Pos dirs[] = {{0,1}, {0,-1}, {1,0}, {-1,0}};
+        for (const auto& dir : dirs) {
             int nr = current.r + dir.r;
             int nc = current.c + dir.c;
             if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && !visited_roads[nr][nc]) {
@@ -160,7 +158,8 @@ bool is_connected_by_road(
     };
 
     for (const auto& tr_tc : target_building_coords) {
-        for (const auto& dir : {Pos{-1,0}, Pos{1,0}, Pos{0,-1}, Pos{0,1}}) {
+        constexpr Pos dirs[] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
+        for (const auto& dir : dirs) {
             int nr = tr_tc.r + dir.r;
             int nc = tr_tc.c + dir.c;
 
@@ -188,7 +187,7 @@ bool check_overlap(int new_r, int new_c, int new_h, int new_w, const std::vector
     return false;
 }
 
-void write_grid_to_file(const std::vector<std::vector<int>>& grid, const std::string& filename, int num_houses) {
+void write_grid_to_file(const std::vector<int>& grid, int rows, int cols, const std::string& filename, int num_houses) {
     std::ofstream outfile(filename);
     if (!outfile.is_open()) {
         std::cerr << "Error opening file: " << filename << std::endl;
@@ -198,8 +197,9 @@ void write_grid_to_file(const std::vector<std::vector<int>>& grid, const std::st
     outfile << "Best Solution - Houses: " << num_houses << "\n";
     outfile << "Grid Layout:\n";
 
-    for (const auto& row : grid) {
-        for (int cell_val : row) {
+    for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+            int cell_val = grid[r * cols + c];
             switch (cell_val) {
                 case EMPTY: outfile << "  "; break;
                 case HOUSE: outfile << "H "; break;

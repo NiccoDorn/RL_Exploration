@@ -7,11 +7,11 @@ ExperienceReplay::ExperienceReplay(size_t capacity) : capacity_(capacity) {
     rng_ = std::mt19937(rd());
 }
 
-void ExperienceReplay::add(const State& state, int action, double reward, const State& next_state) {
+void ExperienceReplay::add(const State& state, int action, double reward, const State& next_state, const std::vector<int>& valid_next_actions) {
     if (buffer_.size() == capacity_) {
         buffer_.pop_front();
     }
-    buffer_.push_back({state, action, reward, next_state});
+    buffer_.push_back({state, action, reward, next_state, valid_next_actions});
 }
 
 std::vector<ExperienceReplay::Experience> ExperienceReplay::sample(size_t batch_size) {
@@ -25,6 +25,6 @@ std::vector<ExperienceReplay::Experience> ExperienceReplay::sample(size_t batch_
     return samples;
 }
 
-size_t ExperienceReplay::size() const {
+size_t ExperienceReplay::size() const noexcept {
     return buffer_.size();
 }

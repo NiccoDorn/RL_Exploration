@@ -6,8 +6,8 @@
 #include "agent.h"
 #include "utils.h"
 
-void train_enhanced_rl_agent(EnhancedCityPlanningEnv& env, EnhancedQLearningAgent& agent, int num_episodes) {
-    std::vector<std::vector<int>> best_overall_grid;
+void train_enhanced_rl_agent(EnhancedCityPlanningEnv& env, EnhancedQLearningAgent& agent, int num_episodes, int grid_rows, int grid_cols) {
+    std::vector<int> best_overall_grid;
     int max_overall_houses = -1;
     auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -56,10 +56,10 @@ void train_enhanced_rl_agent(EnhancedCityPlanningEnv& env, EnhancedQLearningAgen
 
     if (!best_overall_grid.empty() && max_overall_houses >= 0) {
         std::cout << "\nEnhanced QRL-Training completed. Best found solution had " << max_overall_houses << " validly connected houses." << std::endl;
-        write_grid_to_file(best_overall_grid, "best_city_layout.txt", max_overall_houses);
+        write_grid_to_file(best_overall_grid, grid_rows, grid_cols, "best_city_layout.txt", max_overall_houses);
         std::cout << "Best grid saved to best_city_layout.txt" << std::endl;
     } else {
-        std::cout << "\nEnhanced QRL-Agent could not find or learn a valid placement." << std::endl; 
+        std::cout << "\nEnhanced QRL-Agent could not find or learn a valid placement." << std::endl;
     }
 }
 
@@ -79,9 +79,10 @@ int main() {
     std::cout << "Enhanced QRL-Training on a " << grid_rows << "x" << grid_cols << " grid..." << std::endl;
     std::cout << "Features: Reduced State Space, Simple Reward System," << std::endl;
     std::cout << "          Hybrid Exploration (Epsilon-Greedy + Boltzmann + UCB)," << std::endl;
-    std::cout << "          Experience Replay, Incremental Connectivity Checks," << std::endl;
-    std::cout << "          Block-Aligned Prioritization, Greedy Gap Filling" << std::endl;
+    std::cout << "          Experience Replay, Union-Find Connectivity, Spatial Hashing," << std::endl;
+    std::cout << "          Incremental Valid Actions, Flat Grid, Block-Aligned Prioritization," << std::endl;
+    std::cout << "          Greedy Gap Filling - FULLY OPTIMIZED!" << std::endl;
 
-    train_enhanced_rl_agent(env, agent, 20000);
+    train_enhanced_rl_agent(env, agent, 20000, grid_rows, grid_cols);
     return 0;
 }
