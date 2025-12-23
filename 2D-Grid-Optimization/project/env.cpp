@@ -8,9 +8,7 @@
 EnhancedCityPlanningEnv::EnhancedCityPlanningEnv(int rows, int cols) :
     rows_(rows), cols_(cols), episode_length_(0),
     house_spatial_hash_(HOUSE_H, HOUSE_W),
-    road_connectivity_kontor_(rows * cols),
-    road_connectivity_tc_(rows * cols),
-    next_road_id_(0), valid_actions_dirty_(true),
+    valid_actions_dirty_(true),
     max_actions_per_episode_(200) {
 
     grid_.resize(rows_ * cols_, ROAD);
@@ -83,156 +81,35 @@ int EnhancedCityPlanningEnv::_count_potential_block_extensions(int r, int c) con
     return extensions;
 }
 
-void EnhancedCityPlanningEnv::_init_road_connectivity() {
-    road_pos_to_id_.clear();
-    next_road_id_ = 0;
+bool EnhancedCityPlanningEnv::_check_all_buildings_connectivity(int new_house_r, int new_house_c) const {
+    PlacedBuilding hypothetical_building = {new_house_r, new_house_c, HOUSE_H, HOUSE_W, HOUSE};
 
-    int total_cells = rows_ * cols_;
-    road_connectivity_kontor_.reset(total_cells);
-    road_connectivity_tc_.reset(total_cells);
+    // Check TC ↔ Kontor connectivity with hypothetical building
+    if (!is_connected_by_road_flat(grid_, rows_, cols_, tc_coords_list_, kontor_coords_list_, &hypothetical_building)) {
+        return false;
+    }
 
-    for (int r = 0; r < rows_; ++r) {
-        for (int c = 0; c < cols_; ++c) {
-            if (at(r, c) == ROAD) {
-                int idx = grid_index(r, c);
-                road_pos_to_id_[idx] = next_road_id_++;
-            }
+    // Check ALL existing houses remain connected to TC and Kontor
+    for (const auto& house_pos : house_positions_) {
+        std::vector<Pos> house_coords = get_building_coords(house_pos.r, house_pos.c, HOUSE_H, HOUSE_W);
+
+        if (!is_connected_by_road_flat(grid_, rows_, cols_, house_coords, tc_coords_list_, &hypothetical_building) ||
+            !is_connected_by_road_flat(grid_, rows_, cols_, house_coords, kontor_coords_list_, &hypothetical_building)) {
+            return false;
         }
     }
 
-    for (int r = 0; r < rows_; ++r) {
-        for (int c = 0; c < cols_; ++c) {
-            if (at(r, c) == ROAD) {
-                int idx = grid_index(r, c);
-                int id = road_pos_to_id_[idx];
+    // Check new house connectivity (if valid position)
+    if (new_house_r >= 0 && new_house_c >= 0) {
+        std::vector<Pos> new_house_coords = get_building_coords(new_house_r, new_house_c, HOUSE_H, HOUSE_W);
 
-                if (r + 1 < rows_ && at(r + 1, c) == ROAD) {
-                    int neighbor_idx = grid_index(r + 1, c);
-                    int neighbor_id = road_pos_to_id_[neighbor_idx];
-                    road_connectivity_kontor_.unite(id, neighbor_id);
-                    road_connectivity_tc_.unite(id, neighbor_id);
-                }
-                if (c + 1 < cols_ && at(r, c + 1) == ROAD) {
-                    int neighbor_idx = grid_index(r, c + 1);
-                    int neighbor_id = road_pos_to_id_[neighbor_idx];
-                    road_connectivity_kontor_.unite(id, neighbor_id);
-                    road_connectivity_tc_.unite(id, neighbor_id);
-                }
-            }
+        if (!is_connected_by_road_flat(grid_, rows_, cols_, new_house_coords, tc_coords_list_, &hypothetical_building) ||
+            !is_connected_by_road_flat(grid_, rows_, cols_, new_house_coords, kontor_coords_list_, &hypothetical_building)) {
+            return false;
         }
     }
 
-    if (!kontor_coords_list_.empty()) {
-        int kontor_road_id = -1;
-        for (const auto& pos : kontor_coords_list_) {
-            constexpr Pos dirs[] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
-            for (const auto& dir : dirs) {
-                int nr = pos.r + dir.r;
-                int nc = pos.c + dir.c;
-                if (nr >= 0 && nr < rows_ && nc >= 0 && nc < cols_ && at(nr, nc) == ROAD) {
-                    int idx = grid_index(nr, nc);
-                    if (road_pos_to_id_.count(idx)) {
-                        kontor_road_id = road_pos_to_id_[idx];
-                        break;
-                    }
-                }
-            }
-            if (kontor_road_id != -1) break;
-        }
-
-        if (kontor_road_id != -1) {
-            for (const auto& [idx, id] : road_pos_to_id_) {
-                road_connectivity_kontor_.unite(kontor_road_id, id);
-            }
-        }
-    }
-
-    if (!tc_coords_list_.empty()) {
-        int tc_road_id = -1;
-        for (const auto& pos : tc_coords_list_) {
-            constexpr Pos dirs[] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
-            for (const auto& dir : dirs) {
-                int nr = pos.r + dir.r;
-                int nc = pos.c + dir.c;
-                if (nr >= 0 && nr < rows_ && nc >= 0 && nc < cols_ && at(nr, nc) == ROAD) {
-                    int idx = grid_index(nr, nc);
-                    if (road_pos_to_id_.count(idx)) {
-                        tc_road_id = road_pos_to_id_[idx];
-                        break;
-                    }
-                }
-            }
-            if (tc_road_id != -1) break;
-        }
-
-        if (tc_road_id != -1) {
-            for (const auto& [idx, id] : road_pos_to_id_) {
-                road_connectivity_tc_.unite(tc_road_id, id);
-            }
-        }
-    }
-}
-
-bool EnhancedCityPlanningEnv::_check_connectivity_fast(int new_house_r, int new_house_c) const {
-    std::vector<Pos> house_coords = get_building_coords(new_house_r, new_house_c, HOUSE_H, HOUSE_W);
-
-    int kontor_component = -1;
-    int tc_component = -1;
-
-    for (const auto& pos : kontor_coords_list_) {
-        constexpr Pos dirs[] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
-        for (const auto& dir : dirs) {
-            int nr = pos.r + dir.r;
-            int nc = pos.c + dir.c;
-            if (nr >= 0 && nr < rows_ && nc >= 0 && nc < cols_ && at(nr, nc) == ROAD) {
-                int idx = grid_index(nr, nc);
-                if (road_pos_to_id_.count(idx)) {
-                    kontor_component = road_connectivity_kontor_.find(road_pos_to_id_.at(idx));
-                    break;
-                }
-            }
-        }
-        if (kontor_component != -1) break;
-    }
-
-    for (const auto& pos : tc_coords_list_) {
-        constexpr Pos dirs[] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
-        for (const auto& dir : dirs) {
-            int nr = pos.r + dir.r;
-            int nc = pos.c + dir.c;
-            if (nr >= 0 && nr < rows_ && nc >= 0 && nc < cols_ && at(nr, nc) == ROAD) {
-                int idx = grid_index(nr, nc);
-                if (road_pos_to_id_.count(idx)) {
-                    tc_component = road_connectivity_tc_.find(road_pos_to_id_.at(idx));
-                    break;
-                }
-            }
-        }
-        if (tc_component != -1) break;
-    }
-
-    if (kontor_component == -1 || tc_component == -1) return false;
-
-    for (const auto& coord : house_coords) {
-        constexpr Pos dirs[] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
-        for (const auto& dir : dirs) {
-            int nr = coord.r + dir.r;
-            int nc = coord.c + dir.c;
-            if (nr >= 0 && nr < rows_ && nc >= 0 && nc < cols_ && at(nr, nc) == ROAD) {
-                int idx = grid_index(nr, nc);
-                if (road_pos_to_id_.count(idx)) {
-                    int road_id = road_pos_to_id_.at(idx);
-                    int component_kontor = road_connectivity_kontor_.find(road_id);
-                    int component_tc = road_connectivity_tc_.find(road_id);
-
-                    if (component_kontor == kontor_component && component_tc == tc_component) {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    return false;
+    return true;
 }
 
 void EnhancedCityPlanningEnv::_invalidate_valid_actions(int r, int c) {
@@ -260,7 +137,7 @@ void EnhancedCityPlanningEnv::_recompute_valid_actions() {
             if (_is_valid_position(r, c)) {
                 std::vector<Pos> house_coords = get_building_coords(r, c, HOUSE_H, HOUSE_W);
                 if (is_within_influence(house_coords, tc_center_)) {
-                    if (_check_connectivity_fast(r, c)) {
+                    if (_check_all_buildings_connectivity(r, c)) {
                         int action_id = r * cols_available + c;
                         valid_action_set_.insert(action_id);
                     }
@@ -329,14 +206,13 @@ int EnhancedCityPlanningEnv::_fill_gaps_greedy() {
 
         bool house_placed_in_this_overall_attempt = false;
         for (const auto& gap : potential_gaps) {
-            if (_check_connectivity_fast(gap.r, gap.c)) {
+            if (_check_all_buildings_connectivity(gap.r, gap.c)) {
                 place_building_on_grid_flat(grid_, cols_, HOUSE, gap.r, gap.c, HOUSE_H, HOUSE_W);
                 placed_buildings_info_.push_back({gap.r, gap.c, HOUSE_H, HOUSE_W, HOUSE});
                 house_positions_.push_back(gap);
                 house_spatial_hash_.insert(gap);
                 num_houses_placed_++;
                 houses_added++;
-                _init_road_connectivity();
                 _invalidate_valid_actions(gap.r, gap.c);
                 house_placed_in_this_overall_attempt = true;
                 break;
@@ -530,8 +406,6 @@ State EnhancedCityPlanningEnv::reset() {
     placed_buildings_info_.push_back({kontor_r, kontor_c, TRADING_POST_H, TRADING_POST_W, TRADING_POST});
     kontor_coords_list_ = get_building_coords(kontor_r, kontor_c, TRADING_POST_H, TRADING_POST_W);
 
-    _init_road_connectivity();
-
     return _get_reduced_state();
 }
 
@@ -557,7 +431,7 @@ std::tuple<State, double, bool> EnhancedCityPlanningEnv::step(int action_idx) {
         return {_get_reduced_state(), PENALTY_INVALID_PLACEMENT, false};
     }
 
-    if (!_check_connectivity_fast(r, c)) {
+    if (!_check_all_buildings_connectivity(r, c)) {
         consecutive_successes_ = 0;
         return {_get_reduced_state(), PENALTY_DISCONNECTED_HOUSE, false};
     }
@@ -570,7 +444,6 @@ std::tuple<State, double, bool> EnhancedCityPlanningEnv::step(int action_idx) {
     consecutive_successes_++;
     last_house_pos_ = {r, c};
 
-    _init_road_connectivity();
     _invalidate_valid_actions(r, c);
 
     double reward = REWARD_PLACEMENT_SUCCESS;

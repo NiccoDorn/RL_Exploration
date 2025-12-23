@@ -75,6 +75,116 @@ bool is_within_influence(const std::vector<Pos>& house_coords, const Pos& tc_cen
     return count >= 5;
 }
 
+// Flat grid BFS for road reachability with hypothetical building support
+std::vector<std::vector<bool>> bfs_road_reachable_flat(
+    const std::vector<int>& grid,
+    int rows,
+    int cols,
+    const std::vector<Pos>& start_building_coords,
+    const PlacedBuilding* hypothetical_building
+) {
+    std::vector<std::vector<bool>> visited_roads(rows, std::vector<bool>(cols, false));
+    std::deque<Pos> q;
+
+    auto is_hypothetical_cell = [&](int r, int c) {
+        if (hypothetical_building) {
+            return r >= hypothetical_building->r && r < hypothetical_building->r + hypothetical_building->h &&
+                c >= hypothetical_building->c && c < hypothetical_building->c + hypothetical_building->w;
+        }
+        return false;
+    };
+
+    // Start BFS from all adjacent road cells to the building
+    for (const auto& br_bc : start_building_coords) {
+        constexpr Pos dirs[] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
+        for (const auto& dir : dirs) {
+            int nr = br_bc.r + dir.r;
+            int nc = br_bc.c + dir.c;
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                int idx = nr * cols + nc;
+                if (grid[idx] == ROAD && !is_hypothetical_cell(nr, nc)) {
+                    if (!visited_roads[nr][nc]) {
+                        visited_roads[nr][nc] = true;
+                        q.push_back({nr, nc});
+                    }
+                }
+            }
+        }
+    }
+
+    // BFS through road network
+    while (!q.empty()) {
+        Pos current = q.front();
+        q.pop_front();
+
+        constexpr Pos dirs[] = {{0,1}, {0,-1}, {1,0}, {-1,0}};
+        for (const auto& dir : dirs) {
+            int nr = current.r + dir.r;
+            int nc = current.c + dir.c;
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && !visited_roads[nr][nc]) {
+                int idx = nr * cols + nc;
+                if (grid[idx] == ROAD && !is_hypothetical_cell(nr, nc)) {
+                    visited_roads[nr][nc] = true;
+                    q.push_back({nr, nc});
+                }
+            }
+        }
+    }
+    return visited_roads;
+}
+
+// Flat grid connectivity check with hypothetical building support
+bool is_connected_by_road_flat(
+    const std::vector<int>& grid,
+    int rows,
+    int cols,
+    const std::vector<Pos>& start_building_coords,
+    const std::vector<Pos>& target_building_coords,
+    const PlacedBuilding* hypothetical_building
+) {
+    std::vector<std::vector<bool>> reachable_roads = bfs_road_reachable_flat(
+        grid, rows, cols, start_building_coords, hypothetical_building
+    );
+
+    // Check if any road from start is reachable
+    bool any_road_reachable_from_start = false;
+    for(const auto& row : reachable_roads) {
+        for(bool cell : row) {
+            if(cell) {
+                any_road_reachable_from_start = true;
+                break;
+            }
+        }
+        if(any_road_reachable_from_start) break;
+    }
+    if (!any_road_reachable_from_start) return false;
+
+    auto is_hypothetical_cell = [&](int r, int c) {
+        if (hypothetical_building) {
+            return r >= hypothetical_building->r && r < hypothetical_building->r + hypothetical_building->h &&
+                c >= hypothetical_building->c && c < hypothetical_building->c + hypothetical_building->w;
+        }
+        return false;
+    };
+
+    // Check if target building can reach any of the reachable roads
+    for (const auto& tr_tc : target_building_coords) {
+        constexpr Pos dirs[] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
+        for (const auto& dir : dirs) {
+            int nr = tr_tc.r + dir.r;
+            int nc = tr_tc.c + dir.c;
+
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                int idx = nr * cols + nc;
+                if (grid[idx] == ROAD && reachable_roads[nr][nc] && !is_hypothetical_cell(nr, nc)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 std::vector<std::vector<bool>> bfs_road_reachable(
     const std::vector<std::vector<int>>& grid,
     const std::vector<Pos>& start_building_coords,
