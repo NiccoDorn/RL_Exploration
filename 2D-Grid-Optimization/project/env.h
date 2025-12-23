@@ -39,6 +39,11 @@ private:
     std::vector<int> valid_actions_cache_;
     bool valid_actions_dirty_;
 
+    // BFS caching for performance
+    mutable std::vector<std::vector<bool>> cached_tc_reachable_;
+    mutable std::vector<std::vector<bool>> cached_kontor_reachable_;
+    mutable bool bfs_cache_valid_;
+
     bool episode_end_processing_;
     std::mt19937 rng_;
     int max_actions_per_episode_;
@@ -55,6 +60,7 @@ private:
     std::vector<int> _get_valid_actions();
     void _recompute_valid_actions();
     Pos _action_to_position(int action_idx) const noexcept;
+    void _update_bfs_caches() const;
     bool _check_all_buildings_connectivity(int new_house_r = -1, int new_house_c = -1) const;
     int _count_adjacent_roads(int r, int c, int h, int w) const;
     int _calculate_road_exposure(int r, int c) const;
